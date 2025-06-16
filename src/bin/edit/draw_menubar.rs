@@ -48,7 +48,7 @@ fn draw_menu_file(ctx: &mut Context, state: &mut State) {
         if ctx.menubar_menu_button(loc(LocId::FileSave), 'S', kbmod::CTRL | vk::S) {
             state.wants_save = true;
         }
-        if ctx.menubar_menu_button(loc(LocId::FileSaveAs), 'A', vk::NULL) {
+        if ctx.menubar_menu_button(loc(LocId::FileSaveAs), 'A', kbmod::CTRL | kbmod::SHIFT | vk::S) {
             state.wants_file_picker = StateFilePicker::SaveAs;
         }
         if ctx.menubar_menu_button(loc(LocId::FileClose), 'C', kbmod::CTRL | vk::W) {

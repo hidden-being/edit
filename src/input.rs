@@ -74,6 +74,14 @@ impl InputKeyMod {
     }
 }
 
+impl std::ops::BitOr<InputKeyMod> for InputKeyMod {
+    type Output = Self;
+
+    fn bitor(self, rhs: InputKeyMod) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
 impl std::ops::BitOr<InputKeyMod> for InputKey {
     type Output = Self;
 
