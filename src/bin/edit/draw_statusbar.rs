@@ -147,7 +147,7 @@ pub fn draw_statusbar(ctx: &mut Context, state: &mut State) {
             }
         }
 
-        ctx.label(
+        state.wants_goto |= ctx.button(
             "location",
             &arena_format!(
                 ctx.arena(),
@@ -155,6 +155,7 @@ pub fn draw_statusbar(ctx: &mut Context, state: &mut State) {
                 tb.cursor_logical_pos().y + 1,
                 tb.cursor_logical_pos().x + 1
             ),
+            ButtonStyle::default(),
         );
 
         #[cfg(feature = "debug-latency")]
