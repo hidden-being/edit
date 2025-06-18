@@ -271,7 +271,10 @@ impl TextBuffer {
             margin_width: 0,
             word_wrap_column: 0,
 
+            #[cfg(feature = "user-state")]
             config_state: ConfigState::load_state().unwrap_or_default(),
+            #[cfg(not(feature = "user-state"))]
+            config_state: Default::default(),
             wants_cursor_visibility: false,
         })
     }
@@ -592,6 +595,7 @@ impl TextBuffer {
         }
     }
 
+    # [cfg(feature = "user-state")]
     pub fn save_state(&self) -> Option<()> {
         self.config_state.save_state()
     }

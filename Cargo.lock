@@ -189,6 +189,7 @@ dependencies = [
  "serde",
  "serde_json",
  "windows-sys",
+ "winreg",
  "winresource",
  "zstd",
 ]
@@ -751,6 +752,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c06928c8748d81b05c9be96aad92e1b6ff01833332f281e8cfca3be4b35fc9ec"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.55.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
+dependencies = [
+ "cfg-if",
+ "serde",
+ "windows-sys",
 ]
 
 [[package]]

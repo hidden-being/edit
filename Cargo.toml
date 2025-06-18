@@ -15,7 +15,7 @@ harness = false
 
 [features]
 debug-latency = []
-user-state = ["dep:serde", "dep:serde_json"]
+user-state = ["dep:serde", "dep:serde_json", "dep:winreg"]
 
 # We use `opt-level = "s"` as it significantly reduces binary size.
 # We could then use the `#[optimize(speed)]` attribute for spot optimizations.
@@ -43,6 +43,9 @@ libc = "0.2"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1.22"
+
+[target.'cfg(windows)'.dependencies]
+winreg = { version = "0.55.0", features = ["serialization-serde"], optional = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.59"

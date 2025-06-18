@@ -15,9 +15,15 @@ use windows_sys::Win32::System::Diagnostics::Debug;
 use windows_sys::Win32::System::{Console, IO, LibraryLoader, Memory, Threading};
 use windows_sys::Win32::{Foundation, Globalization};
 use windows_sys::w;
+#[cfg(feature = "user-state")]
+use winreg::RegKey;
+#[cfg(feature = "user-state")]
+use winreg::enums::*;
 
 use crate::apperr;
 use crate::arena::{Arena, ArenaString, scratch_arena};
+#[cfg(feature = "user-state")]
+use crate::buffer::ConfigState;
 use crate::helpers::*;
 
 type ReadConsoleInputExW = unsafe extern "system" fn(
@@ -409,6 +415,22 @@ pub fn drives() -> impl Iterator<Item = char> {
                 Some((b'A' + bit as u8) as char)
             }
         })
+    }
+}
+
+#[cfg(feature = "user-state")]
+impl ConfigState {
+    pub fn save_state(&self) -> Option<()> {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (key, _) = hkcu.create_subkey("Software\\Microsoft\\Edit").ok()?;
+        key.encode(&self).ok()?;
+        Some(())
+    }
+
+    pub fn load_state() -> Option<Self> {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let key = hkcu.open_subkey("Software\\Microsoft\\Edit").ok()?;
+        Some(key.decode().ok()?)
     }
 }
 
