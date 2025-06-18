@@ -35,6 +35,8 @@ use std::rc::Rc;
 use std::str;
 
 pub use gap_buffer::GapBuffer;
+#[cfg(feature = "user-state")]
+use serde::{Deserialize, Serialize};
 
 use crate::arena::{ArenaString, scratch_arena};
 use crate::cell::SemiRefCell;
@@ -170,6 +172,39 @@ pub type TextBufferCell = SemiRefCell<TextBuffer>;
 /// the given text buffer(s) until after the layout process.
 pub type RcTextBuffer = Rc<TextBufferCell>;
 
+/// A user state that can be stored in the text buffer.
+#[cfg_attr(feature = "user-state", derive(Serialize, Deserialize))]
+#[derive(Clone)]
+pub struct ConfigState {
+    encoding: String,
+    overtype: bool,
+    word_wrap: bool,
+    line_numbers: bool,
+    line_highlight: bool,
+    insert_final_newline: bool,
+    newlines_are_crlf: bool,
+    indent_with_tabs: bool,
+    tab_size: CoordType,
+    ruler: CoordType,
+}
+
+impl Default for ConfigState {
+    fn default() -> Self {
+        Self {
+            encoding: "UTF-8".to_string(),
+            overtype: false,
+            word_wrap: true,
+            line_numbers: true,
+            line_highlight: false,
+            insert_final_newline: !cfg!(windows), // Unix users want a final newline.
+            newlines_are_crlf: cfg!(windows),     // Windows users want CRLF.
+            indent_with_tabs: false,
+            tab_size: 4,
+            ruler: 0,
+        }
+    }
+}
+
 /// A text buffer for a text editor.
 pub struct TextBuffer {
     buffer: GapBuffer,
@@ -196,19 +231,10 @@ pub struct TextBuffer {
 
     width: CoordType,
     margin_width: CoordType,
-    margin_enabled: bool,
     word_wrap_column: CoordType,
-    word_wrap_enabled: bool,
-    tab_size: CoordType,
-    indent_with_tabs: bool,
-    line_highlight_enabled: bool,
-    ruler: CoordType,
-    encoding: &'static str,
-    newlines_are_crlf: bool,
-    insert_final_newline: bool,
-    overtype: bool,
 
     wants_cursor_visibility: bool,
+    config_state: ConfigState,
 }
 
 impl TextBuffer {
@@ -243,18 +269,9 @@ impl TextBuffer {
 
             width: 0,
             margin_width: 0,
-            margin_enabled: false,
             word_wrap_column: 0,
-            word_wrap_enabled: false,
-            tab_size: 4,
-            indent_with_tabs: false,
-            line_highlight_enabled: false,
-            ruler: 0,
-            encoding: "UTF-8",
-            newlines_are_crlf: cfg!(windows), // Windows users want CRLF
-            insert_final_newline: false,
-            overtype: false,
 
+            config_state: Default::default(),
             wants_cursor_visibility: false,
         })
     }
@@ -298,26 +315,26 @@ impl TextBuffer {
     }
 
     /// The encoding used during reading/writing. "UTF-8" is the default.
-    pub fn encoding(&self) -> &'static str {
-        self.encoding
+    pub fn encoding(&self) -> String {
+        self.config_state.encoding.clone()
     }
 
     /// Set the encoding used during reading/writing.
     pub fn set_encoding(&mut self, encoding: &'static str) {
-        if self.encoding != encoding {
-            self.encoding = encoding;
+        if self.config_state.encoding != encoding {
+            self.config_state.encoding = encoding.to_string();
             self.mark_as_dirty();
         }
     }
 
     /// The newline type used in the document. LF or CRLF.
     pub fn is_crlf(&self) -> bool {
-        self.newlines_are_crlf
+        self.config_state.newlines_are_crlf
     }
 
     /// Changes the newline type without normalizing the document.
     pub fn set_crlf(&mut self, crlf: bool) {
-        self.newlines_are_crlf = crlf;
+        self.config_state.newlines_are_crlf = crlf;
     }
 
     /// Changes the newline type used in the document.
@@ -386,23 +403,23 @@ impl TextBuffer {
             cursor.offset = cursor_for_rendering_offset;
         }
 
-        self.newlines_are_crlf = crlf;
+        self.config_state.newlines_are_crlf = crlf;
     }
 
     /// If enabled, automatically insert a final newline
     /// when typing at the end of the file.
     pub fn set_insert_final_newline(&mut self, enabled: bool) {
-        self.insert_final_newline = enabled;
+        self.config_state.insert_final_newline = enabled;
     }
 
     /// Whether to insert or overtype text when writing.
     pub fn is_overtype(&self) -> bool {
-        self.overtype
+        self.config_state.overtype
     }
 
     /// Set the overtype mode.
     pub fn set_overtype(&mut self, overtype: bool) {
-        self.overtype = overtype;
+        self.config_state.overtype = overtype;
     }
 
     /// Gets the logical cursor position, that is,
@@ -423,11 +440,11 @@ impl TextBuffer {
     }
 
     /// Is the left margin enabled?
-    pub fn set_margin_enabled(&mut self, enabled: bool) -> bool {
-        if self.margin_enabled == enabled {
+    pub fn set_line_numbers(&mut self, enabled: bool) -> bool {
+        if self.config_state.line_numbers == enabled {
             false
         } else {
-            self.margin_enabled = enabled;
+            self.config_state.line_numbers = enabled;
             self.reflow();
             true
         }
@@ -458,7 +475,7 @@ impl TextBuffer {
     ///
     /// Technically, this is a misnomer, because it's line-wrapping.
     pub fn is_word_wrap_enabled(&self) -> bool {
-        self.word_wrap_enabled
+        self.config_state.word_wrap
     }
 
     /// Enable or disable word-wrap.
@@ -466,8 +483,8 @@ impl TextBuffer {
     /// NOTE: It's expected that the tui code calls `set_width()` sometime after this.
     /// This will then trigger the actual recalculation of the cursor position.
     pub fn set_word_wrap(&mut self, enabled: bool) {
-        if self.word_wrap_enabled != enabled {
-            self.word_wrap_enabled = enabled;
+        if self.config_state.word_wrap != enabled {
+            self.config_state.word_wrap = enabled;
             self.width = 0; // Force a reflow.
             self.make_cursor_visible();
         }
@@ -490,16 +507,16 @@ impl TextBuffer {
 
     /// Set the tab width. Could be anything, but is expected to be 1-8.
     pub fn tab_size(&self) -> CoordType {
-        self.tab_size
+        self.config_state.tab_size
     }
 
     /// Set the tab size. Clamped to 1-8.
     pub fn set_tab_size(&mut self, width: CoordType) -> bool {
         let width = width.clamp(1, 8);
-        if width == self.tab_size {
+        if width == self.config_state.tab_size {
             false
         } else {
-            self.tab_size = width;
+            self.config_state.tab_size = width;
             self.reflow();
             true
         }
@@ -507,22 +524,22 @@ impl TextBuffer {
 
     /// Returns whether tabs are used for indentation.
     pub fn indent_with_tabs(&self) -> bool {
-        self.indent_with_tabs
+        self.config_state.indent_with_tabs
     }
 
     /// Sets whether tabs or spaces are used for indentation.
     pub fn set_indent_with_tabs(&mut self, indent_with_tabs: bool) {
-        self.indent_with_tabs = indent_with_tabs;
+        self.config_state.indent_with_tabs = indent_with_tabs;
     }
 
     /// Sets whether the line the cursor is on should be highlighted.
     pub fn set_line_highlight_enabled(&mut self, enabled: bool) {
-        self.line_highlight_enabled = enabled;
+        self.config_state.line_highlight = enabled;
     }
 
     /// Sets a ruler column, e.g. 80.
     pub fn set_ruler(&mut self, column: CoordType) {
-        self.ruler = column;
+        self.config_state.ruler = column;
     }
 
     pub fn reflow(&mut self) {
@@ -540,7 +557,7 @@ impl TextBuffer {
             // +1 onto logical_lines, because line numbers are 1-based.
             // +1 onto log10, because we want the digit width and not the actual log10.
             // +3 onto log10, because we append " | " to the line numbers to form the margin.
-            self.margin_width = if self.margin_enabled {
+            self.margin_width = if self.config_state.line_numbers {
                 self.stats.logical_lines.ilog10() as CoordType + 4
             } else {
                 0
@@ -549,7 +566,7 @@ impl TextBuffer {
             let text_width = self.text_width();
             // 2 columns are required, because otherwise wide glyphs wouldn't ever fit.
             self.word_wrap_column =
-                if self.word_wrap_enabled && text_width >= 2 { text_width } else { 0 };
+                if self.config_state.word_wrap && text_width >= 2 { text_width } else { 0 };
         }
 
         self.cursor_for_rendering = None;
@@ -627,10 +644,10 @@ impl TextBuffer {
         }
 
         if let Some(encoding) = encoding {
-            self.encoding = encoding;
+            self.config_state.encoding = encoding.to_string();
         } else {
             let bom = detect_bom(unsafe { buf[..first_chunk_len].assume_init_ref() });
-            self.encoding = bom.unwrap_or("UTF-8");
+            self.config_state.encoding = bom.unwrap_or("UTF-8").to_string();
         }
 
         // TODO: Since reading the file can fail, we should ensure that we also reset the cursor here.
@@ -638,7 +655,7 @@ impl TextBuffer {
         self.buffer.clear();
 
         let done = read == 0;
-        if self.encoding == "UTF-8" {
+        if self.config_state.encoding == "UTF-8" {
             self.read_file_as_utf8(file, &mut buf, first_chunk_len, done)?;
         } else {
             self.read_file_with_icu(file, &mut buf, first_chunk_len, done)?;
@@ -744,10 +761,10 @@ impl TextBuffer {
             // Add 1, because the last line doesn't end in a newline (it ends in the literal end).
             self.stats.logical_lines = lines + 1;
             self.stats.visual_lines = self.stats.logical_lines;
-            self.newlines_are_crlf = newlines_are_crlf;
-            self.insert_final_newline = final_newline;
-            self.indent_with_tabs = indent_with_tabs;
-            self.tab_size = tab_size;
+            self.config_state.newlines_are_crlf = newlines_are_crlf;
+            self.config_state.insert_final_newline = final_newline;
+            self.config_state.indent_with_tabs = indent_with_tabs;
+            self.config_state.tab_size = tab_size;
         }
 
         self.recalc_after_content_swap();
@@ -765,7 +782,7 @@ impl TextBuffer {
             let mut first_chunk = unsafe { buf[..first_chunk_len].assume_init_ref() };
             if first_chunk.starts_with(b"\xEF\xBB\xBF") {
                 first_chunk = &first_chunk[3..];
-                self.encoding = "UTF-8 BOM";
+                self.config_state.encoding = "UTF-8 BOM".to_string();
             }
 
             self.buffer.replace(0..0, first_chunk);
@@ -817,7 +834,8 @@ impl TextBuffer {
     ) -> apperr::Result<()> {
         let scratch = scratch_arena(None);
         let pivot_buffer = scratch.alloc_uninit_slice(4 * KIBI);
-        let mut c = icu::Converter::new(pivot_buffer, self.encoding, "UTF-8")?;
+        let mut c =
+            icu::Converter::new(pivot_buffer, self.config_state.encoding.as_str(), "UTF-8")?;
         let mut first_chunk = unsafe { buf[..first_chunk_len].assume_init_ref() };
 
         while !first_chunk.is_empty() {
@@ -876,8 +894,8 @@ impl TextBuffer {
     pub fn write_file(&mut self, file: &mut File) -> apperr::Result<()> {
         let mut offset = 0;
 
-        if self.encoding.starts_with("UTF-8") {
-            if self.encoding == "UTF-8 BOM" {
+        if self.config_state.encoding.starts_with("UTF-8") {
+            if self.config_state.encoding == "UTF-8 BOM" {
                 file.write_all(b"\xEF\xBB\xBF")?;
             }
             loop {
@@ -900,13 +918,14 @@ impl TextBuffer {
         let scratch = scratch_arena(None);
         let pivot_buffer = scratch.alloc_uninit_slice(4 * KIBI);
         let buf = scratch.alloc_uninit_slice(4 * KIBI);
-        let mut c = icu::Converter::new(pivot_buffer, "UTF-8", self.encoding)?;
+        let mut c =
+            icu::Converter::new(pivot_buffer, "UTF-8", self.config_state.encoding.as_str())?;
         let mut offset = 0;
 
         // Write the BOM for the encodings we know need it.
-        if self.encoding.starts_with("UTF-16")
-            || self.encoding.starts_with("UTF-32")
-            || self.encoding == "GB18030"
+        if self.config_state.encoding.starts_with("UTF-16")
+            || self.config_state.encoding.starts_with("UTF-32")
+            || self.config_state.encoding == "GB18030"
         {
             let (_, output_advance) = c.convert(b"\xEF\xBB\xBF", buf)?;
             let chunk = unsafe { buf[..output_advance].assume_init_ref() };
@@ -1218,7 +1237,7 @@ impl TextBuffer {
     fn measurement_config(&self) -> MeasurementConfig<'_> {
         MeasurementConfig::new(&self.buffer)
             .with_word_wrap_column(self.word_wrap_column)
-            .with_tab_size(self.tab_size)
+            .with_tab_size(self.config_state.tab_size)
     }
 
     fn goto_line_start(&self, cursor: Cursor, y: CoordType) -> Cursor {
@@ -1659,13 +1678,16 @@ impl TextBuffer {
                                     cursor_tab,
                                     global_off + chunk_off - 1,
                                 );
-                                let tab_size = self.tab_size - (cursor_tab.column % self.tab_size);
+                                let tab_size = self.config_state.tab_size
+                                    - (cursor_tab.column % self.config_state.tab_size);
                                 line.push_str(&TAB_WHITESPACE[..tab_size as usize]);
 
                                 // Since we know that we just aligned ourselves to the next tab stop,
                                 // we can trivially process any successive tabs.
                                 while chunk_off < chunk.len() && chunk[chunk_off] == b'\t' {
-                                    line.push_str(&TAB_WHITESPACE[..self.tab_size as usize]);
+                                    line.push_str(
+                                        &TAB_WHITESPACE[..self.config_state.tab_size as usize],
+                                    );
                                     chunk_off += 1;
                                 }
                                 continue;
@@ -1769,8 +1791,9 @@ impl TextBuffer {
             fb.blend_fg(margin, 0x7f3f3f3f);
         }
 
-        if self.ruler > 0 {
-            let left = destination.left + self.margin_width + (self.ruler - origin.x).max(0);
+        if self.config_state.ruler > 0 {
+            let left =
+                destination.left + self.margin_width + (self.config_state.ruler - origin.x).max(0);
             let right = destination.right;
             if left < right {
                 fb.blend_bg(
@@ -1804,9 +1827,9 @@ impl TextBuffer {
             };
 
             if text.contains(cursor) {
-                fb.set_cursor(cursor, self.overtype);
+                fb.set_cursor(cursor, self.config_state.overtype);
 
-                if self.line_highlight_enabled && selection_beg >= selection_end {
+                if self.config_state.line_highlight && selection_beg >= selection_end {
                     fb.blend_bg(
                         Rect {
                             left: destination.left,
@@ -1910,7 +1933,7 @@ impl TextBuffer {
             while line_off < line.len() {
                 // Split the line into chunks of non-tabs and tabs.
                 let mut plain = line;
-                if !raw && !self.indent_with_tabs {
+                if !raw && !self.config_state.indent_with_tabs {
                     let end = memchr2(b'\t', b'\t', line, line_off);
                     plain = &line[line_off..end];
                 }
@@ -1921,14 +1944,15 @@ impl TextBuffer {
 
                 // Now replace tabs with spaces.
                 while line_off < line.len() && line[line_off] == b'\t' {
-                    let spaces = self.tab_size - (self.cursor.column % self.tab_size);
+                    let spaces = self.config_state.tab_size
+                        - (self.cursor.column % self.config_state.tab_size);
                     let spaces = &TAB_WHITESPACE.as_bytes()[..spaces as usize];
                     self.edit_write(spaces);
                     line_off += 1;
                 }
             }
 
-            if !raw && self.overtype {
+            if !raw && self.config_state.overtype {
                 let delete = self.cursor.logical_pos.x - column_before;
                 let end = self.cursor_move_to_logical_internal(
                     self.cursor,
@@ -1944,7 +1968,11 @@ impl TextBuffer {
 
             // First, write the newline.
             newline_buffer.clear();
-            newline_buffer.push_str(if self.newlines_are_crlf { "\r\n" } else { "\n" });
+            newline_buffer.push_str(if self.config_state.newlines_are_crlf {
+                "\r\n"
+            } else {
+                "\n"
+            });
 
             if !raw {
                 // We'll give the next line the same indentation as the previous one.
@@ -1952,7 +1980,7 @@ impl TextBuffer {
                 // because "  a\n  a\n" should give the 3rd line a total indentation of 4.
                 // Assuming your terminal has bracketed paste, this won't be a concern though.
                 // (If it doesn't, use a different terminal.)
-                let tab_size = self.tab_size as usize;
+                let tab_size = self.config_state.tab_size as usize;
                 let line_beg = self.goto_line_start(self.cursor, self.cursor.logical_pos.y);
                 let limit = self.cursor.offset;
                 let mut off = line_beg.offset;
@@ -1976,7 +2004,7 @@ impl TextBuffer {
                 }
 
                 // If tabs are enabled, add as many tabs as we can.
-                if self.indent_with_tabs {
+                if self.config_state.indent_with_tabs {
                     let tab_count = newline_indentation / tab_size;
                     newline_buffer.push_repeat('\t', tab_count);
                     newline_indentation -= tab_count * tab_size;
@@ -2013,13 +2041,13 @@ impl TextBuffer {
         //
         // In order to not annoy people with this, we only add a
         // newline if you just edited the very end of the buffer.
-        if self.insert_final_newline
+        if self.config_state.insert_final_newline
             && self.cursor.offset > 0
             && self.cursor.offset == self.text_length()
             && self.cursor.logical_pos.x > 0
         {
             let cursor = self.cursor;
-            self.edit_write(if self.newlines_are_crlf { b"\r\n" } else { b"\n" });
+            self.edit_write(if self.config_state.newlines_are_crlf { b"\r\n" } else { b"\n" });
             self.set_cursor_internal(cursor);
         }
 
@@ -2129,7 +2157,7 @@ impl TextBuffer {
             if replacement[offset] == b'\t' {
                 remove = 1;
             } else {
-                while remove < self.tab_size as usize
+                while remove < self.config_state.tab_size as usize
                     && offset + remove < replacement.len()
                     && replacement[offset + remove] == b' '
                 {
@@ -2189,7 +2217,10 @@ impl TextBuffer {
 
         // Line copies (= Ctrl+C when there's no selection) always end with a newline.
         if line_copy && !out.ends_with(b"\n") {
-            out.replace_range(out.len().., if self.newlines_are_crlf { b"\r\n" } else { b"\n" });
+            out.replace_range(
+                out.len()..,
+                if self.config_state.newlines_are_crlf { b"\r\n" } else { b"\n" },
+            );
         }
 
         out
@@ -2458,7 +2489,7 @@ impl TextBuffer {
                         written = slice_copy_safe(gap, line);
 
                         if has_newline {
-                            if self.newlines_are_crlf && written < gap.len() {
+                            if self.config_state.newlines_are_crlf && written < gap.len() {
                                 gap[written] = b'\r';
                                 written += 1;
                             }

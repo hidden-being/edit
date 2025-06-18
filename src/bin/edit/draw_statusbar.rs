@@ -36,7 +36,7 @@ pub fn draw_statusbar(ctx: &mut Context, state: &mut State) {
         }
 
         state.wants_encoding_picker |=
-            ctx.button("encoding", tb.encoding(), ButtonStyle::default());
+            ctx.button("encoding", tb.encoding().as_str(), ButtonStyle::default());
         if state.wants_encoding_picker {
             if doc.path.is_some() {
                 ctx.block_begin("frame");
@@ -200,7 +200,8 @@ pub fn draw_statusbar(ctx: &mut Context, state: &mut State) {
 }
 
 pub fn draw_dialog_encoding_change(ctx: &mut Context, state: &mut State) {
-    let encoding = state.documents.active_mut().map_or("", |doc| doc.buffer.borrow().encoding());
+    let encoding =
+        state.documents.active_mut().map_or("".to_string(), |doc| doc.buffer.borrow().encoding());
     let reopen = state.wants_encoding_change == StateEncodingChange::Reopen;
     let width = (ctx.size().width - 20).max(10);
     let height = (ctx.size().height - 10).max(10);

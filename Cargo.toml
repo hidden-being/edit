@@ -15,6 +15,7 @@ harness = false
 
 [features]
 debug-latency = []
+user-state = ["dep:serde"]
 
 # We use `opt-level = "s"` as it significantly reduces binary size.
 # We could then use the `#[optimize(speed)]` attribute for spot optimizations.
@@ -34,6 +35,7 @@ codegen-units = 16          # Make compiling criterion faster (16 is the default
 lto = "thin"                # Similarly, speed up linking by a ton
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
