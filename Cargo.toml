@@ -15,7 +15,7 @@ harness = false
 
 [features]
 debug-latency = []
-user-state = ["dep:serde"]
+user-state = ["dep:serde", "dep:serde_json"]
 
 # We use `opt-level = "s"` as it significantly reduces binary size.
 # We could then use the `#[optimize(speed)]` attribute for spot optimizations.
@@ -38,6 +38,7 @@ lto = "thin"                # Similarly, speed up linking by a ton
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
+serde_json = { version = "1.0", optional = true }
 libc = "0.2"
 
 [target.'cfg(windows)'.build-dependencies]

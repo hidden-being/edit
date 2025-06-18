@@ -108,6 +108,12 @@ fn draw_menu_view(ctx: &mut Context, state: &mut State) {
         let word_wrap = tb.is_word_wrap_enabled();
 
         // All values on the statusbar are currently document specific.
+        #[cfg(feature = "user-state")]
+        {
+            if ctx.menubar_menu_button("Save settings", 'S', vk::NULL) {
+                let _ = tb.save_state();
+            }
+        }
         if ctx.menubar_menu_button(loc(LocId::ViewFocusStatusbar), 'S', vk::NULL) {
             state.wants_statusbar_focus = true;
         }

@@ -8,6 +8,8 @@
 
 use std::ffi::{CStr, c_int, c_void};
 use std::fs::{self, File};
+#[cfg(feature = "user-state")]
+use std::io::Write;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::os::fd::{AsRawFd as _, FromRawFd as _};
 use std::path::Path;
@@ -15,6 +17,8 @@ use std::ptr::{self, NonNull, null_mut};
 use std::{thread, time};
 
 use crate::arena::{Arena, ArenaString, scratch_arena};
+#[cfg(feature = "user-state")]
+use crate::buffer::ConfigState;
 use crate::helpers::*;
 use crate::{apperr, arena_format};
 
@@ -357,6 +361,45 @@ pub fn open_stdin_if_redirected() -> Option<File> {
         } else {
             None
         }
+    }
+}
+
+#[cfg(feature = "user-state")]
+fn get_config_location() -> String {
+    use std::env::var;
+
+    if let Ok(dir) = var("MSEDIT_CONFIG_DIR") {
+        return dir;
+    }
+
+    if let Ok(dir) = var("XDG_CONFIG_HOME") {
+        return format!("{}/msedit", dir);
+    }
+
+    if let Ok(dir) = var("HOME") {
+        return format!("{}/.config/msedit", dir);
+    }
+
+    return "~/.config/msedit".to_string();
+}
+
+#[cfg(feature = "user-state")]
+impl ConfigState {
+    pub fn save_state(&self) -> Option<()> {
+        fs::create_dir_all(get_config_location()).ok()?;
+        let dir = format!("{}/config.json", get_config_location());
+        let json = serde_json::to_string(&self).ok()?;
+        let mut file = File::create(&dir).ok()?;
+        file.write_all(json.as_bytes()).ok()?;
+        Some(())
+    }
+
+    pub fn load_state() -> Option<Self> {
+        fs::create_dir_all(get_config_location()).ok()?;
+        let dir = format!("{}/config.json", get_config_location());
+        let file = File::open(&dir).ok()?;
+        let json = serde_json::from_reader(file).ok()?;
+        Some(json)
     }
 }
 

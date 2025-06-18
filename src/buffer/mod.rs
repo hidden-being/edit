@@ -271,7 +271,7 @@ impl TextBuffer {
             margin_width: 0,
             word_wrap_column: 0,
 
-            config_state: Default::default(),
+            config_state: ConfigState::load_state().unwrap_or_default(),
             wants_cursor_visibility: false,
         })
     }
@@ -590,6 +590,10 @@ impl TextBuffer {
                 self.stats.visual_lines = self.stats.logical_lines;
             }
         }
+    }
+
+    pub fn save_state(&self) -> Option<()> {
+        self.config_state.save_state()
     }
 
     /// Replaces the entire buffer contents with the given `text`.
